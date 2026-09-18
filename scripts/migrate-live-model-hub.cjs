@@ -45,7 +45,8 @@ async function main() {
       const keys = keysByProvider.get(provider.id) || (provider.api_key ? [{ id: `legacy_${provider.id}`, provider_id: provider.id, api_key: provider.api_key, label: 'legacy primary', status: 'active', weight: 1 }] : []);
       for (const key of keys) {
         if (!key.api_key) continue;
-        await client.query(`INSERT INTO model_relay.provider_keys (id,provider_id,secret_ciphertext,label,status,weight) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (provider_id,secret_ciphertext) DO UPDATE SET label=EXCLUDED.label,status=EXCLUDED.status,weight=EXCLUDED.weight,updated_at=NOW()`, [`key_${key.id}`, provider.id, encryptSecret(key.api_key), key.label || '', ['active', 'manual_cold', 'disabled'].includes(key.status) ? key.status : 'active', Math.max(1, key.weight || 1)]);
+        // Encryption uses a random IV, so the stable source key ID is the idempotency key.
+        await client.query(`INSERT INTO model_relay.provider_keys (id,provider_id,secret_ciphertext,label,status,weight) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET provider_id=EXCLUDED.provider_id,secret_ciphertext=EXCLUDED.secret_ciphertext,label=EXCLUDED.label,status=EXCLUDED.status,weight=EXCLUDED.weight,updated_at=NOW()`, [`key_${key.id}`, provider.id, encryptSecret(key.api_key), key.label || '', ['active', 'manual_cold', 'disabled'].includes(key.status) ? key.status : 'active', Math.max(1, key.weight || 1)]);
         keyCount++;
       }
     }

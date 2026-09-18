@@ -2,13 +2,16 @@ services:
   molingapi:
     build: .
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - moling_fun
+    ports:
+      - "127.0.0.1:${PORT:-3010}:3010"
     env_file:
       - .env
     environment:
       NODE_ENV: production
       PORT: ${PORT:-3010}
-      PG_HOST: ${PG_HOST:-127.0.0.1}
+      PG_HOST: ${PG_HOST:-www-moling-fun-postgres}
       PG_PORT: ${PG_PORT:-5432}
       PG_DATABASE: ${PG_DATABASE:-huabu}
       PG_USER: ${PG_USER:-postgres}
@@ -19,3 +22,8 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+
+networks:
+  moling_fun:
+    external: true
+    name: www-moling-fun_default
