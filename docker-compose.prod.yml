@@ -1,0 +1,21 @@
+services:
+  molingapi:
+    build: .
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3010}
+      PG_HOST: ${PG_HOST:-127.0.0.1}
+      PG_PORT: ${PG_PORT:-5432}
+      PG_DATABASE: ${PG_DATABASE:-huabu}
+      PG_USER: ${PG_USER:-postgres}
+      PG_PASSWORD: ${PG_PASSWORD:?PG_PASSWORD is required}
+      PG_SSLMODE: ${PG_SSLMODE:-disable}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3010)+'/api/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

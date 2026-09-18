@@ -1,0 +1,24 @@
+{
+  "name": "molingapi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "墨灵中转站：provider、model、key pool 和生成任务的独立服务",
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node --test server/relay/*.test.cjs",
+    "test:contracts": "vitest run shared/model-relay-contracts.test.ts",
+    "test:all": "node --test server/relay/*.test.cjs && vitest run shared/model-relay-contracts.test.ts",
+    "migrate:live": "node scripts/migrate-live-model-hub.cjs",
+    "export:model-hub": "node scripts/export-model-hub.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0",
+    "typescript": "^5.9.0"
+  }
+}

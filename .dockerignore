@@ -1,0 +1,8 @@
+.git
+.superpowers
+staging
+node_modules
+logs
+*.dump
+model-hub-export.json
+.env

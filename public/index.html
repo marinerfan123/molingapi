@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>墨灵中转站 · Model Hub</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background:#0c111d; color:#edf2f7; }
+    body { margin:0; background:radial-gradient(circle at 10% 0,#1a2940 0,transparent 35%),#0c111d; min-height:100vh; }
+    main { max-width:1180px; margin:0 auto; padding:38px 22px 70px; }
+    h1 { margin:0 0 8px; font-size:30px; } p { color:#93a4bd; }
+    .bar,.card { background:rgba(21,31,49,.86); border:1px solid #2a3b57; border-radius:16px; padding:18px; margin-top:18px; box-shadow:0 16px 40px #0002; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+    label { display:block; color:#a9b8ce; font-size:13px; margin:10px 0 6px; } input,select,button,textarea { width:100%; box-sizing:border-box; border:1px solid #354967; border-radius:9px; background:#101a2a; color:#fff; padding:10px 11px; }
+    button { cursor:pointer; background:#2d6cdf; border:0; margin-top:10px; font-weight:600; } button.secondary { background:#253650; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; font-size:14px; } th,td { text-align:left; padding:11px 8px; border-bottom:1px solid #2a3b57; vertical-align:top; } th { color:#91a6c4; }
+    .muted { color:#8194af; font-size:13px; } .pill { border-radius:99px; padding:3px 8px; background:#1c563f; color:#9ef0c8; font-size:12px; } .danger { color:#ff9f9f; }
+    #message { min-height:20px; color:#9ef0c8; } code { color:#b8d3ff; }
+  </style>
+</head>
+<body><main>
+  <h1>墨灵中转站</h1><p>独立 Model Hub：服务商、密钥池、模型、线路和任务统一管理。</p>
+  <section class="bar">
+    <div class="grid"><div><label>管理员令牌</label><input id="adminToken" type="password" placeholder="仅保存在当前浏览器 localStorage"></div><div><label>内部调用令牌（测试生成接口时使用）</label><input id="internalToken" type="password"></div></div>
+    <button onclick="saveTokens()">保存令牌并刷新</button> <button class="secondary" onclick="refreshAll()">刷新数据</button>
+    <div id="message"></div>
+  </section>
+  <section class="grid">
+    <div class="card"><h2>新增服务商</h2><form id="providerForm"><label>ID</label><input name="id" required placeholder="openai-relay"><label>名称</label><input name="name" required placeholder="OpenAI 中转"><label>Base URL</label><input name="baseUrl" required placeholder="https://api.example.com/v1"><label>协议</label><select name="protocol"><option value="openai-compatible">OpenAI Compatible</option><option value="custom">Custom</option></select><label>首个 API Key（只写入服务端）</label><input name="secret" type="password"><button>创建服务商</button></form></div>
+    <div class="card"><h2>新增模型</h2><form id="modelForm"><label>逻辑 modelId</label><input name="modelId" required placeholder="flux-1"><label>显示名称</label><input name="displayName" required placeholder="Flux 1"><label>类型</label><select name="type"><option>image</option><option>video</option><option>text</option></select><label>绑定服务商 ID（可选）</label><input name="providerId" placeholder="openai-relay"><label>上游模型名</label><input name="upstreamModelName" placeholder="flux-1"><button>创建模型并绑定</button></form></div>
+  </section>
+  <section class="card"><h2>服务商</h2><div id="providers" class="muted">加载中…</div></section>
+  <section class="card"><h2>模型</h2><div id="models" class="muted">加载中…</div></section>
+</main><script>
+const $=s=>document.querySelector(s); const stored=(k)=>localStorage.getItem(k)||'';
+$('#adminToken').value=stored('molingapi_admin'); $('#internalToken').value=stored('molingapi_internal');
+function headers(admin=true){const h={'content-type':'application/json'}; if(admin) h['x-admin-token']=$('#adminToken').value; return h;}
+function msg(text, bad=false){$('#message').textContent=text; $('#message').className=bad?'danger':'';}
+function saveTokens(){localStorage.setItem('molingapi_admin',$('#adminToken').value);localStorage.setItem('molingapi_internal',$('#internalToken').value);refreshAll();}
+async function api(url,opt={}){const r=await fetch(url,{...opt,headers:{...headers(opt.admin!==false),...(opt.headers||{})}});const b=await r.json().catch(()=>({}));if(!r.ok)throw Error(b.message||r.statusText);return b;}
+async function refreshAll(){try{const [p,m]=await Promise.all([api('/api/providers'),api('/api/models')]); renderProviders(p.providers||[]);renderModels(m.models||[]);msg('数据已刷新');}catch(e){msg(e.message,true);}}
+function renderProviders(rows){$('#providers').innerHTML=rows.length?'<table><tr><th>ID</th><th>名称</th><th>协议</th><th>状态</th><th>密钥数</th></tr>'+rows.map(x=>`<tr><td><code>${x.id}</code></td><td>${x.name}</td><td>${x.protocol}</td><td>${x.enabled?'<span class=pill>启用</span>':'停用'}</td><td>${x.keyCount}</td></tr>`).join('')+'</table>':'暂无服务商';}
+function renderModels(rows){$('#models').innerHTML=rows.length?'<table><tr><th>modelId</th><th>名称</th><th>类型</th><th>线路</th><th>revision</th></tr>'+rows.map(x=>`<tr><td><code>${x.modelId}</code></td><td>${x.displayName}</td><td>${x.type}</td><td>${(x.providerIds||[]).join(', ')||'未绑定'}</td><td>${x.revision}</td></tr>`).join('')+'</table>':'暂无模型';}
+$('#providerForm').onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{await api('/api/providers',{method:'POST',body:JSON.stringify({...d,supportedTypes:['image','video','text']})});e.target.reset();await refreshAll();}catch(x){msg(x.message,true);}};
+$('#modelForm').onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{const created=await api('/api/models',{method:'POST',body:JSON.stringify(d)});if(d.providerId)await api('/api/bindings',{method:'POST',body:JSON.stringify({modelId:d.modelId,providerId:d.providerId,upstreamModelName:d.upstreamModelName||d.modelId})});e.target.reset();await refreshAll();}catch(x){msg(x.message,true);}};
+refreshAll();
+</script></body></html>
