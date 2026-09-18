@@ -36,3 +36,19 @@ test('classifies non-2xx provider responses', async () => {
     (error) => error instanceof ProviderError && error.code === 'provider_rate_limited' && error.retryable,
   );
 });
+
+test('returns a poller for asynchronous video jobs', async () => {
+  const calls = [];
+  const job = await submitProviderJob({
+    provider: { baseUrl: 'https://provider.test', protocol: 'openai-compatible' },
+    model: 'video-1', apiKey: 'secret-key', request: { contentType: 'video', prompt: 'x' },
+    fetchImpl: async (url) => {
+      calls.push(url);
+      return { ok: true, status: 200, text: async () => JSON.stringify(calls.length === 1 ? { id: 'job-1', status: 'queued' } : { id: 'job-1', status: 'completed', video_url: 'https://cdn.test/video.mp4' }) };
+    },
+  });
+  assert.equal(job.kind, 'async');
+  const polled = await job.poll({ provider: { baseUrl: 'https://provider.test', protocol: 'openai-compatible' }, providerTaskId: 'job-1', apiKey: 'secret-key' });
+  assert.deepEqual(polled, { done: true, result: { videoUrl: 'https://cdn.test/video.mp4' } });
+  assert.equal(calls[1], 'https://provider.test/videos/job-1');
+});
