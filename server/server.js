@@ -69,6 +69,11 @@ async function main() {
     });
   });
 
+  const recovered = await taskService.recover();
+  if (recovered.resumed || recovered.failed) {
+    console.log(`[molingapi] recovered queued=${recovered.resumed} failed=${recovered.failed}`);
+  }
+
   const shutdown = async () => {
     server.close();
     if (pool) await pool.end();

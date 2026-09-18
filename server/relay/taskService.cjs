@@ -47,6 +47,9 @@ class MemoryTaskStore {
     if (!row || !expectedStates.includes(row.state)) return null;
     return this.update(taskId, patch);
   }
+  async listNonTerminal() {
+    return [...this.tasks.values()].filter((task) => !TERMINAL.has(task.state));
+  }
 }
 
 function createDbTaskStore(pool) {
@@ -68,6 +71,10 @@ function createDbTaskStore(pool) {
     async get(taskId) {
       const result = await pool.query('SELECT * FROM model_relay.generation_tasks WHERE task_id=$1', [taskId]);
       return mapDbRow(result.rows[0]);
+    },
+    async listNonTerminal() {
+      const result = await pool.query("SELECT * FROM model_relay.generation_tasks WHERE state IN ('queued','running','waiting') ORDER BY created_at ASC");
+      return result.rows.map(mapDbRow);
     },
     async update(taskId, patch) { return updateDbTask(pool, taskId, patch); },
     async transition(taskId, expectedStates, patch) { return updateDbTask(pool, taskId, patch, expectedStates); },
@@ -160,6 +167,30 @@ class TaskService {
     this.emit(result.row);
     queueMicrotask(() => this.run(result.row.taskId));
     return { status: 'pending', taskId: result.row.taskId, modelId: result.row.modelId };
+  }
+
+  async recover() {
+    if (typeof this.store.listNonTerminal !== 'function') return { resumed: 0, failed: 0 };
+    const rows = await this.store.listNonTerminal();
+    let resumed = 0;
+    let failed = 0;
+    for (const row of rows) {
+      if (row.state === 'queued') {
+        queueMicrotask(() => this.run(row.taskId));
+        resumed += 1;
+        continue;
+      }
+      // Provider execution is process-local; fail in-flight rows instead of leaving callers polling forever.
+      const stale = await this.store.transition(row.taskId, ['running', 'waiting'], {
+        state: 'failed',
+        error: 'relay restarted before task completion',
+      });
+      if (stale) {
+        failed += 1;
+        this.emit(stale);
+      }
+    }
+    return { resumed, failed };
   }
 
   async get({ taskId, userId }) {

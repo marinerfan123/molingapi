@@ -83,6 +83,8 @@ async function handle(req, res, ctx) {
         if (req.method === 'GET' && !parts[3]) return sendJson(res, 200, await ctx.taskService.get({ taskId, userId }));
         if (req.method === 'POST' && parts[3] === 'cancel') return sendJson(res, 200, await ctx.taskService.cancel({ taskId, userId }));
         if (req.method === 'GET' && parts[3] === 'events') {
+          // Authorize before registering the listener so an unknown task ID cannot observe its events.
+          await ctx.taskService.get({ taskId, userId });
           res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
           let ended = false;
           const end = () => { if (!ended) { ended = true; clearInterval(heartbeat); unsubscribe?.(); res.end(); } };

@@ -67,3 +67,21 @@ test('capacity gate rejects a second concurrent lease', () => {
   lease.release(true);
   assert.doesNotThrow(() => gate.acquire(route));
 });
+
+test('recovery resumes queued tasks and fails in-flight tasks after restart', async () => {
+  const store = new MemoryTaskStore();
+  await store.create({ taskId: 'queued-task', userId: 'u1', idempotencyKey: 'queued', modelId: 'm1', requestHash: 'h1', request: { modelId: 'm1', prompt: 'queued' } });
+  await store.create({ taskId: 'running-task', userId: 'u1', idempotencyKey: 'running', modelId: 'm1', requestHash: 'h2', request: { modelId: 'm1', prompt: 'running' } });
+  await store.update('running-task', { state: 'running' });
+  const service = new TaskService({
+    store,
+    routeService: { selectRoute: async () => ({ providerId: 'p1', keyId: 'k1', upstreamModel: 'upstream', provider: { baseUrl: 'https://provider.test', protocol: 'openai-compatible' }, apiKey: 'secret' }) },
+    providerSubmit: async () => ({ kind: 'sync', images: ['https://cdn.test/recovered.png'] }),
+    logger: { error() {} },
+  });
+
+  assert.deepEqual(await service.recover(), { resumed: 1, failed: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal((await service.get({ taskId: 'queued-task', userId: 'u1' })).state, 'done');
+  assert.equal((await service.get({ taskId: 'running-task', userId: 'u1' })).state, 'failed');
+});
