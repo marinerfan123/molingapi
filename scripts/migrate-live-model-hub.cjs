@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const { createPool, migrate, transaction } = require('../server/db.cjs');
-const { encryptSecret } = require('../server/relay/secrets.cjs');
+const { encryptSecret, validateMasterKey } = require('../server/relay/secrets.cjs');
 
 function idForModel(modelId) { return `model_${crypto.createHash('sha256').update(modelId).digest('hex').slice(0, 20)}`; }
 function safeJson(value) { return value && typeof value === 'object' ? value : {}; }
@@ -13,7 +13,7 @@ async function optional(pool, sql, params = []) {
 }
 
 async function main() {
-  if (!process.env.MODEL_RELAY_MASTER_KEY) throw new Error('MODEL_RELAY_MASTER_KEY is required');
+  validateMasterKey();
   const target = createPool();
   const source = process.env.SOURCE_DATABASE_URL ? new Pool({ connectionString: process.env.SOURCE_DATABASE_URL }) : target;
   await target.query('SELECT 1');

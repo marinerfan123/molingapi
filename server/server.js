@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { createPool, migrate } = require('./db.cjs');
+const { validateMasterKey } = require('./relay/secrets.cjs');
 const { RouteService } = require('./relay/routeService.cjs');
 const { TaskService, MemoryTaskStore, createDbTaskStore } = require('./relay/taskService.cjs');
 const { handle } = require('./relay/httpRoutes.cjs');
@@ -29,6 +30,7 @@ async function main() {
   if (production && (!process.env.MODEL_RELAY_MASTER_KEY || !process.env.MODEL_RELAY_INTERNAL_TOKEN || !process.env.MODEL_RELAY_ADMIN_TOKEN)) {
     throw new Error('production requires MODEL_RELAY_MASTER_KEY, MODEL_RELAY_INTERNAL_TOKEN and MODEL_RELAY_ADMIN_TOKEN');
   }
+  if (production) validateMasterKey();
 
   let pool = null;
   if (!memoryAllowed) {

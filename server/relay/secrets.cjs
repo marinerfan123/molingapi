@@ -41,4 +41,9 @@ function maskSecret(secret) {
   return value.length < 4 ? '***' : `***${value.slice(-4)}`;
 }
 
-module.exports = { encryptSecret, decryptSecret, maskSecret };
+function validateMasterKey() {
+  masterKey();
+  return true;
+}
+
+module.exports = { encryptSecret, decryptSecret, maskSecret, validateMasterKey };
