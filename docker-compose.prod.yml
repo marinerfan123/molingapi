@@ -11,7 +11,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: ${PORT:-3010}
-      PG_HOST: ${PG_HOST:-www-moling-fun-postgres}
+      PG_HOST: ${PG_HOST:?PG_HOST is required}
       PG_PORT: ${PG_PORT:-5432}
       PG_DATABASE: ${PG_DATABASE:-huabu}
       PG_USER: ${PG_USER:-postgres}
@@ -26,4 +26,4 @@ services:
 networks:
   moling_fun:
     external: true
-    name: www-moling-fun_default
+    name: ${MODEL_RELAY_DOCKER_NETWORK:?MODEL_RELAY_DOCKER_NETWORK is required}

@@ -8,7 +8,9 @@
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-`MODEL_RELAY_MASTER_KEY` 只用于 provider key 的 AES-256-GCM 封装，必须备份在密码管理器中；丢失后无法解密已有 key。`MODEL_RELAY_INTERNAL_TOKEN` 只给 AiOnline 服务端，`MODEL_RELAY_ADMIN_TOKEN` 只给管理台管理员。
+`MODEL_RELAY_MASTER_KEY` 只用于 provider key 的 AES-256-GCM 封装，必须备份在密码管理器中；丢失后无法解密已有 key。`MODEL_RELAY_INTERNAL_TOKEN` 只给 AiOnline 服务端，`MODEL_RELAY_USER_SIGNING_KEY` 用于 HMAC 绑定 `x-user-id`，`MODEL_RELAY_ADMIN_TOKEN` 只给管理台管理员。
+
+`PG_HOST` 和 `MODEL_RELAY_DOCKER_NETWORK` 必须显式填写为当前部署的数据库主机和 Docker 网络；模板不假设任何容器名称。
 
 ## 2. 启动
 
@@ -34,6 +36,7 @@ docker compose -f docker-compose.prod.yml exec molingapi node scripts/migrate-li
 ```bash
 MODEL_RELAY_URL=http://127.0.0.1:3010 \
 MODEL_RELAY_INTERNAL_TOKEN=... \
+MODEL_RELAY_USER_SIGNING_KEY=... \
 node scripts/smoke-model-relay.mjs
 ```
 

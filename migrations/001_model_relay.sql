@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS model_relay.models (
 );
 
 CREATE INDEX IF NOT EXISTS model_relay_models_model_idx ON model_relay.models (model_id);
+CREATE UNIQUE INDEX IF NOT EXISTS model_relay_models_model_id_unique ON model_relay.models (model_id);
 
 CREATE TABLE IF NOT EXISTS model_relay.provider_model_bindings (
   id TEXT PRIMARY KEY,
@@ -73,6 +74,7 @@ CREATE TABLE IF NOT EXISTS model_relay.generation_tasks (
   task_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   idempotency_key TEXT NOT NULL,
+  request_hash TEXT NOT NULL DEFAULT '',
   model_id TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'queued' CHECK (state IN ('queued', 'running', 'waiting', 'done', 'failed', 'canceled')),
   request_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -85,6 +87,8 @@ CREATE TABLE IF NOT EXISTS model_relay.generation_tasks (
   completed_at TIMESTAMPTZ,
   UNIQUE (user_id, idempotency_key)
 );
+
+ALTER TABLE model_relay.generation_tasks ADD COLUMN IF NOT EXISTS request_hash TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS model_relay_tasks_user_idx ON model_relay.generation_tasks (user_id, created_at DESC);
 

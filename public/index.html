@@ -21,7 +21,7 @@
 <body><main>
   <h1>墨灵中转站</h1><p>独立 Model Hub：服务商、密钥池、模型、线路和任务统一管理。</p>
   <section class="bar">
-    <div class="grid"><div><label>管理员令牌</label><input id="adminToken" type="password" placeholder="仅保存在当前浏览器 localStorage"></div><div><label>内部调用令牌（测试生成接口时使用）</label><input id="internalToken" type="password"></div></div>
+    <div class="grid"><div><label>管理员令牌</label><input id="adminToken" type="password" placeholder="仅保存在当前页面内存"></div></div>
     <button onclick="saveTokens()">保存令牌并刷新</button> <button class="secondary" onclick="refreshAll()">刷新数据</button>
     <div id="message"></div>
   </section>
@@ -32,15 +32,14 @@
   <section class="card"><h2>服务商</h2><div id="providers" class="muted">加载中…</div></section>
   <section class="card"><h2>模型</h2><div id="models" class="muted">加载中…</div></section>
 </main><script>
-const $=s=>document.querySelector(s); const stored=(k)=>localStorage.getItem(k)||'';
-$('#adminToken').value=stored('molingapi_admin'); $('#internalToken').value=stored('molingapi_internal');
+const $=s=>document.querySelector(s); const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function headers(admin=true){const h={'content-type':'application/json'}; if(admin) h['x-admin-token']=$('#adminToken').value; return h;}
 function msg(text, bad=false){$('#message').textContent=text; $('#message').className=bad?'danger':'';}
-function saveTokens(){localStorage.setItem('molingapi_admin',$('#adminToken').value);localStorage.setItem('molingapi_internal',$('#internalToken').value);refreshAll();}
+function saveTokens(){refreshAll();}
 async function api(url,opt={}){const r=await fetch(url,{...opt,headers:{...headers(opt.admin!==false),...(opt.headers||{})}});const b=await r.json().catch(()=>({}));if(!r.ok)throw Error(b.message||r.statusText);return b;}
 async function refreshAll(){try{const [p,m]=await Promise.all([api('/api/providers'),api('/api/models')]); renderProviders(p.providers||[]);renderModels(m.models||[]);msg('数据已刷新');}catch(e){msg(e.message,true);}}
-function renderProviders(rows){$('#providers').innerHTML=rows.length?'<table><tr><th>ID</th><th>名称</th><th>协议</th><th>状态</th><th>密钥数</th></tr>'+rows.map(x=>`<tr><td><code>${x.id}</code></td><td>${x.name}</td><td>${x.protocol}</td><td>${x.enabled?'<span class=pill>启用</span>':'停用'}</td><td>${x.keyCount}</td></tr>`).join('')+'</table>':'暂无服务商';}
-function renderModels(rows){$('#models').innerHTML=rows.length?'<table><tr><th>modelId</th><th>名称</th><th>类型</th><th>线路</th><th>revision</th></tr>'+rows.map(x=>`<tr><td><code>${x.modelId}</code></td><td>${x.displayName}</td><td>${x.type}</td><td>${(x.providerIds||[]).join(', ')||'未绑定'}</td><td>${x.revision}</td></tr>`).join('')+'</table>':'暂无模型';}
+function renderProviders(rows){$('#providers').innerHTML=rows.length?'<table><tr><th>ID</th><th>名称</th><th>协议</th><th>状态</th><th>密钥数</th></tr>'+rows.map(x=>`<tr><td><code>${esc(x.id)}</code></td><td>${esc(x.name)}</td><td>${esc(x.protocol)}</td><td>${x.enabled?'<span class=pill>启用</span>':'停用'}</td><td>${Number(x.keyCount)||0}</td></tr>`).join('')+'</table>':'暂无服务商';}
+function renderModels(rows){$('#models').innerHTML=rows.length?'<table><tr><th>modelId</th><th>名称</th><th>类型</th><th>线路</th><th>revision</th></tr>'+rows.map(x=>`<tr><td><code>${esc(x.modelId)}</code></td><td>${esc(x.displayName)}</td><td>${esc(x.type)}</td><td>${esc((x.providerIds||[]).join(', ')||'未绑定')}</td><td>${Number(x.revision)||0}</td></tr>`).join('')+'</table>':'暂无模型';}
 $('#providerForm').onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{await api('/api/providers',{method:'POST',body:JSON.stringify({...d,supportedTypes:['image','video','text']})});e.target.reset();await refreshAll();}catch(x){msg(x.message,true);}};
 $('#modelForm').onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));try{const created=await api('/api/models',{method:'POST',body:JSON.stringify(d)});if(d.providerId)await api('/api/bindings',{method:'POST',body:JSON.stringify({modelId:d.modelId,providerId:d.providerId,upstreamModelName:d.upstreamModelName||d.modelId})});e.target.reset();await refreshAll();}catch(x){msg(x.message,true);}};
 refreshAll();

@@ -9,7 +9,11 @@ function idForModel(modelId) { return `model_${crypto.createHash('sha256').updat
 function safeJson(value) { return value && typeof value === 'object' ? value : {}; }
 
 async function optional(pool, sql, params = []) {
-  try { return (await pool.query(sql, params)).rows; } catch (error) { if (/does not exist|column .* does not exist/i.test(error.message)) return []; throw error; }
+  try { return (await pool.query(sql, params)).rows; } catch (error) {
+    // A missing legacy table is supported; a changed table shape must stop the migration.
+    if (/relation "(?:api_keys|provider_model_bindings)" does not exist/i.test(error.message)) return [];
+    throw error;
+  }
 }
 
 async function main() {
@@ -51,6 +55,17 @@ async function main() {
       }
     }
   });
+  const importedKeys = await target.query('SELECT COUNT(*)::int AS count FROM model_relay.provider_keys WHERE status <> \'disabled\'');
+  const availableModels = await target.query(`
+    SELECT COUNT(DISTINCT m.model_id)::int AS count
+    FROM model_relay.models m
+    JOIN model_relay.provider_model_bindings b ON b.model_id=m.model_id AND b.enabled=TRUE
+    JOIN model_relay.providers p ON p.id=b.provider_id AND p.enabled=TRUE
+    JOIN model_relay.provider_keys k ON k.provider_id=p.id AND k.status='active'
+    WHERE m.enabled=TRUE
+  `);
+  if (providers.rows.some((row) => row.enabled !== false) && importedKeys.rows[0].count === 0) throw new Error('migration produced no active provider keys');
+  if (models.rows.length > 0 && importedKeys.rows[0].count > 0 && availableModels.rows[0].count === 0) throw new Error('migration produced no available logical models');
   console.log(JSON.stringify({ ok: true, providers: providers.rowCount, logicalModels: new Set(models.rows.map((row) => row.model_id)).size, bindings: bindings.length, keysProcessed: keyCount }));
   if (source !== target) await source.end();
   await target.end();

@@ -52,6 +52,29 @@ function normalizeResult(payload, type) {
   return {};
 }
 
+async function pollProviderJob({ provider, providerTaskId, apiKey, signal, fetchImpl = globalThis.fetch }) {
+  const configuredPath = provider.endpoint?.poll;
+  const pathName = typeof configuredPath === 'string' ? configuredPath.replace('{id}', encodeURIComponent(providerTaskId)) : `/videos/${encodeURIComponent(providerTaskId)}`;
+  let response;
+  try {
+    response = await fetchImpl(joinUrl(provider.baseUrl, pathName), {
+      method: 'GET',
+      headers: { authorization: `Bearer ${apiKey}`, accept: 'application/json' },
+      signal,
+    });
+  } catch (error) {
+    throw new ProviderError('provider connection failed', { code: 'provider_network_error', status: 502, retryable: true, details: error.message });
+  }
+  const payload = parseJson(await response.text());
+  if (!response.ok) throw new ProviderError('provider polling failed', { code: 'provider_http_error', status: response.status, retryable: response.status >= 500 || response.status === 429 });
+  const status = String(payload.status || payload.state || '').toLowerCase();
+  if (['failed', 'error', 'canceled', 'cancelled'].includes(status)) throw new ProviderError('provider task failed', { code: 'provider_task_failed', status: 502 });
+  const result = normalizeResult(payload, 'video');
+  if (Object.keys(result).length && !result.providerTaskId) return { done: true, result };
+  if (['succeeded', 'completed', 'done'].includes(status)) return { done: true, result };
+  return { done: false, state: status || 'waiting' };
+}
+
 async function submitProviderJob({ provider, model, apiKey, request, signal, fetchImpl = globalThis.fetch }) {
   if (!provider?.baseUrl || !apiKey) throw new ProviderError('provider is not configured', { code: 'provider_config_error', status: 503 });
   if (typeof fetchImpl !== 'function') throw new ProviderError('fetch is unavailable', { code: 'provider_client_error', status: 500 });
@@ -85,8 +108,8 @@ async function submitProviderJob({ provider, model, apiKey, request, signal, fet
     });
   }
   const result = normalizeResult(payload, type);
-  if (result.providerTaskId) return { kind: 'async', ...result, poll: provider.endpoint?.poll || null };
+  if (result.providerTaskId) return { kind: 'async', ...result, poll: ({ provider: pollProvider, providerTaskId: id, apiKey: key, signal: pollSignal }) => pollProviderJob({ provider: pollProvider, providerTaskId: id, apiKey: key, signal: pollSignal, fetchImpl }) };
   return { kind: 'sync', ...result };
 }
 
-module.exports = { ProviderError, submitProviderJob, joinUrl };
+module.exports = { ProviderError, submitProviderJob, pollProviderJob, joinUrl };

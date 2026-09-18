@@ -1,6 +1,7 @@
 'use strict';
 
 const { randomUUID } = require('node:crypto');
+const crypto = require('node:crypto');
 const { encryptSecret, decryptSecret, maskSecret } = require('./secrets.cjs');
 
 function sendJson(res, status, body) {
@@ -10,9 +11,9 @@ function sendJson(res, status, body) {
 }
 
 function errorBody(error) {
-  const status = Number(error.status || 500);
+  const status = Number(error.status || (error.code === '23505' ? 409 : 500));
   const message = status >= 500 ? 'internal server error' : error.message;
-  return { status, body: { error: error.code || 'internal_error', message } };
+  return { status, body: { error: error.code === '23505' ? 'conflict' : (error.code || 'internal_error'), message } };
 }
 
 async function readJson(req, maxBytes = 2 * 1024 * 1024) {
@@ -36,6 +37,12 @@ function requireInternal(req, ctx) {
   if (!ctx.internalToken || bearer(req) !== ctx.internalToken) throw Object.assign(new Error('internal authentication required'), { status: 401, code: 'unauthorized' });
   const userId = String(req.headers['x-user-id'] || '').trim();
   if (!userId) throw Object.assign(new Error('x-user-id is required'), { status: 401, code: 'unauthorized' });
+  if (ctx.userSigningKey) {
+    const supplied = String(req.headers['x-user-signature'] || '');
+    const expected = crypto.createHmac('sha256', ctx.userSigningKey).update(userId).digest('hex');
+    const valid = supplied.length === expected.length && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+    if (!valid) throw Object.assign(new Error('signed user identity is required'), { status: 401, code: 'unauthorized' });
+  }
   return userId;
 }
 
@@ -76,18 +83,19 @@ async function handle(req, res, ctx) {
         if (req.method === 'GET' && !parts[3]) return sendJson(res, 200, await ctx.taskService.get({ taskId, userId }));
         if (req.method === 'POST' && parts[3] === 'cancel') return sendJson(res, 200, await ctx.taskService.cancel({ taskId, userId }));
         if (req.method === 'GET' && parts[3] === 'events') {
-          const initial = await ctx.taskService.get({ taskId, userId });
           res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
-          res.write(`event: snapshot\ndata: ${JSON.stringify(initial)}\n\n`);
-          if (['done', 'failed', 'canceled'].includes(initial.state)) return res.end();
+          let ended = false;
+          const end = () => { if (!ended) { ended = true; clearInterval(heartbeat); unsubscribe?.(); res.end(); } };
           const unsubscribe = ctx.taskService.subscribe(taskId, (snapshot) => {
+            if (ended) return;
             res.write(`event: task\ndata: ${JSON.stringify(snapshot)}\n\n`);
-            if (['done', 'failed', 'canceled'].includes(snapshot.state)) {
-              unsubscribe();
-              res.end();
-            }
+            if (['done', 'failed', 'canceled'].includes(snapshot.state)) end();
           });
-          req.on('close', unsubscribe);
+          const heartbeat = setInterval(() => { if (!ended) res.write(': heartbeat\n\n'); }, 15000);
+          req.on('close', end);
+          const initial = await ctx.taskService.get({ taskId, userId });
+          if (!ended) res.write(`event: snapshot\ndata: ${JSON.stringify(initial)}\n\n`);
+          if (['done', 'failed', 'canceled'].includes(initial.state)) end();
           return undefined;
         }
       }
@@ -160,9 +168,19 @@ async function handle(req, res, ctx) {
       }
       if (parts[1] === 'bindings' && req.method === 'POST') {
         const body = await readJson(req);
+        const modelId = validateId(body.modelId, 'modelId');
+        const providerId = validateId(body.providerId, 'providerId');
+        const existing = await ctx.pool.query('SELECT id, revision FROM model_relay.provider_model_bindings WHERE model_id=$1 AND provider_id=$2', [modelId, providerId]);
+        const values = [String(body.upstreamModelName || modelId), Number(body.priority || 0), Math.max(1, Number(body.weight || 1))];
+        if (existing.rows[0]) {
+          if (!Number.isInteger(body.revision)) throw Object.assign(new Error('revision is required for binding updates'), { status: 400, code: 'revision_required' });
+          const result = await ctx.pool.query('UPDATE model_relay.provider_model_bindings SET upstream_model_name=$1,priority=$2,weight=$3,enabled=TRUE,revision=revision+1,updated_at=NOW() WHERE id=$4 AND revision=$5 RETURNING id,revision', [...values, existing.rows[0].id, body.revision]);
+          if (!result.rows[0]) throw Object.assign(new Error('binding was changed by another administrator'), { status: 409, code: 'revision_conflict' });
+          return sendJson(res, 200, result.rows[0]);
+        }
         const id = validateId(body.id || `binding_${randomUUID()}`, 'binding id');
-        await ctx.pool.query('INSERT INTO model_relay.provider_model_bindings (id,model_id,provider_id,upstream_model_name,priority,weight) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (model_id,provider_id) DO UPDATE SET upstream_model_name=EXCLUDED.upstream_model_name, enabled=TRUE', [id, validateId(body.modelId, 'modelId'), validateId(body.providerId, 'providerId'), String(body.upstreamModelName || body.modelId), Number(body.priority || 0), Math.max(1, Number(body.weight || 1))]);
-        return sendJson(res, 201, { id });
+        const result = await ctx.pool.query('INSERT INTO model_relay.provider_model_bindings (id,model_id,provider_id,upstream_model_name,priority,weight) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,revision', [id, modelId, providerId, ...values]);
+        return sendJson(res, 201, result.rows[0]);
       }
       throw Object.assign(new Error('route not found'), { status: 404, code: 'not_found' });
     }

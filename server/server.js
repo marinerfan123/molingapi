@@ -27,8 +27,8 @@ async function main() {
   loadEnvFile();
   const production = process.env.NODE_ENV === 'production';
   const memoryAllowed = !production && process.env.MODEL_RELAY_ALLOW_MEMORY === 'true';
-  if (production && (!process.env.MODEL_RELAY_MASTER_KEY || !process.env.MODEL_RELAY_INTERNAL_TOKEN || !process.env.MODEL_RELAY_ADMIN_TOKEN)) {
-    throw new Error('production requires MODEL_RELAY_MASTER_KEY, MODEL_RELAY_INTERNAL_TOKEN and MODEL_RELAY_ADMIN_TOKEN');
+  if (production && (!process.env.MODEL_RELAY_MASTER_KEY || !process.env.MODEL_RELAY_INTERNAL_TOKEN || !process.env.MODEL_RELAY_ADMIN_TOKEN || !process.env.MODEL_RELAY_USER_SIGNING_KEY)) {
+    throw new Error('production requires relay master, internal, admin and user-signing keys');
   }
   if (production) validateMasterKey();
 
@@ -56,6 +56,7 @@ async function main() {
       pool,
       internalToken: process.env.MODEL_RELAY_INTERNAL_TOKEN || '',
       adminToken: process.env.MODEL_RELAY_ADMIN_TOKEN || '',
+      userSigningKey: process.env.MODEL_RELAY_USER_SIGNING_KEY || '',
       routeService,
       taskService,
       health: async () => {
